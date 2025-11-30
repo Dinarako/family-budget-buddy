@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Family Budget Calculator Color Palette - Green & Cream */
+    --background: 60 60% 94%; /* #F8FAE5 - Light cream background */
+    --foreground: 140 15% 20%; /* #2C3930 - Dark green text */
+
+    --card: 0 0% 100%; /* White cards */
+    --card-foreground: 140 15% 20%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 140 15% 20%;
+
+    --primary: 140 12% 28%; /* #3F4F44 - Medium green */
+    --primary-foreground: 60 60% 94%;
+
+    --secondary: 140 15% 35%; /* Lighter green */
+    --secondary-foreground: 60 60% 94%;
+
+    --muted: 60 40% 88%;
+    --muted-foreground: 140 10% 40%;
+
+    --accent: 140 15% 35%; /* Green accent */
+    --accent-foreground: 60 60% 94%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 140 10% 85%;
+    --input: 0 0% 100%;
+    --ring: 140 12% 28%;
+
+    --radius: 0.75rem;
+
+    /* Category colors for pie chart */
+    --housing: 140 12% 28%; /* Medium green */
+    --groceries: 140 20% 45%; /* Lighter green */
+    --transportation: 140 15% 20%; /* Dark green */
+    --health: 140 25% 55%; /* Light green */
+    --personal: 140 18% 38%; /* Mid green */
+    --entertainment: 140 22% 50%; /* Another green shade */
+
+    /* Success and warning colors */
+    --success: 142 71% 45%;
+    --warning: 38 92% 50%;
+  }
+
+  .dark {
+    --background: 140 15% 12%;
+    --foreground: 60 60% 94%;
+
+    --card: 140 12% 18%;
+    --card-foreground: 60 60% 94%;
+
+    --popover: 140 12% 18%;
+    --popover-foreground: 60 60% 94%;
+
+    --primary: 140 15% 35%;
+    --primary-foreground: 60 60% 94%;
+
+    --secondary: 140 12% 28%;
+    --secondary-foreground: 60 60% 94%;
+
+    --muted: 140 10% 25%;
+    --muted-foreground: 60 40% 75%;
+
+    --accent: 140 15% 35%;
+    --accent-foreground: 60 60% 94%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 60 60% 94%;
+
+    --border: 140 10% 30%;
+    --input: 140 10% 22%;
+    --ring: 140 15% 35%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
