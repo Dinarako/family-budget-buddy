@@ -59,7 +59,7 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-secondary/20 p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Family Budget Sharing</CardTitle>
+          <CardTitle>Family Budget Calculator</CardTitle>
           <CardDescription>Sign in or create an account to manage your family budget</CardDescription>
         </CardHeader>
         <CardContent>

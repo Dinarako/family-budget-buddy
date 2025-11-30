@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Home, ShoppingCart, Car, Heart, User, Music, LogOut, ArrowLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -51,7 +51,7 @@ const Index = () => {
     }
   }, [selectedBudgetId]);
 
-  const loadBudgetData = async () => {
+  const loadBudgetData = useCallback(async () => {
     if (!selectedBudgetId) return;
 
     try {
@@ -85,18 +85,18 @@ const Index = () => {
 
       if (expensesError) throw expensesError;
       setExpenses(expensesData || []);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'An error occurred',
         variant: 'destructive',
       });
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedBudgetId, user?.id, toast]); // Add dependencies
 
-  const setupRealtimeSubscription = () => {
+  const setupRealtimeSubscription = useCallback(() => {
     const channel = supabase
       .channel('budget-changes')
       .on(
@@ -123,13 +123,13 @@ const Index = () => {
         },
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            setExpenses((prev) => [payload.new as ExpenseItem, ...prev]);
-          } else if (payload.eventType === 'DELETE') {
-            setExpenses((prev) => prev.filter((exp) => exp.id !== payload.old.id));
+            setExpenses(prev => [payload.new as ExpenseItem, ...prev]);
           } else if (payload.eventType === 'UPDATE') {
-            setExpenses((prev) =>
-              prev.map((exp) => (exp.id === payload.new.id ? (payload.new as ExpenseItem) : exp))
+            setExpenses(prev => 
+              prev.map(exp => exp.id === payload.new.id ? payload.new as ExpenseItem : exp)
             );
+          } else if (payload.eventType === 'DELETE') {
+            setExpenses(prev => prev.filter(exp => exp.id !== payload.old.id));
           }
         }
       )
@@ -138,7 +138,16 @@ const Index = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  };
+  }, [selectedBudgetId]); // Add dependencies
+
+  // Now include the functions in the dependency array
+  useEffect(() => {
+    if (selectedBudgetId) {
+      loadBudgetData();
+      const cleanup = setupRealtimeSubscription();
+      return cleanup;
+    }
+  }, [selectedBudgetId, loadBudgetData, setupRealtimeSubscription]);
 
   const handleIncomeChange = async (value: number) => {
     if (!selectedBudgetId || userRole === 'viewer') return;
@@ -150,10 +159,10 @@ const Index = () => {
         .eq('id', selectedBudgetId);
 
       if (error) throw error;
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'An error occurred',
         variant: 'destructive',
       });
     }
@@ -181,10 +190,10 @@ const Index = () => {
       ]);
 
       if (error) throw error;
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'An error occurred',
         variant: 'destructive',
       });
     }
@@ -204,10 +213,10 @@ const Index = () => {
       const { error } = await supabase.from('expense_items').delete().eq('id', id);
 
       if (error) throw error;
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'An error occurred',
         variant: 'destructive',
       });
     }
