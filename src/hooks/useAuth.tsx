@@ -124,25 +124,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const resetPassword = async (email: string) => {
     try {
       const redirectUrl = `${window.location.origin}/auth?mode=reset-password`;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: redirectUrl,
-      });
+      // Call edge function to send password reset email via Resend
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/send-password-reset-email`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({
+            email,
+            redirectUrl,
+          }),
+        }
+      );
 
-      if (error) {
+      const data = await response.json();
+
+      if (!response.ok) {
         toast({
           title: "Password reset failed",
-          description: error.message,
+          description: data.error || "Failed to send reset email",
           variant: "destructive",
         });
-      } else {
-        toast({
-          title: "Success!",
-          description: "Check your email for password reset instructions.",
-        });
+        return { error: new Error(data.error) };
       }
 
-      return { error };
+      toast({
+        title: "Success!",
+        description: "Check your email for password reset instructions.",
+      });
+
+      return { error: null };
     } catch (error: any) {
       toast({
         title: "Password reset failed",
