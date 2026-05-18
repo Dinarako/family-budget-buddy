@@ -12,6 +12,16 @@ export class ApiError extends Error {
   }
 }
 
+async function parseJson(response: Response): Promise<Record<string, unknown>> {
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) return {};
+  try {
+    return (await response.json()) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
 export async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const token = localStorage.getItem('auth_token');
   const headers: HeadersInit = {
@@ -20,11 +30,23 @@ export async function apiRequest<T>(path: string, options?: RequestInit): Promis
     ...(options?.headers ?? {}),
   };
 
-  const response = await fetch(`${API_URL}${path}`, { ...options, headers });
-  const data = await response.json();
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, { ...options, headers });
+  } catch {
+    throw new ApiError(
+      'Cannot reach the server. Make sure the backend is running.',
+      0,
+    );
+  }
+
+  const data = await parseJson(response);
 
   if (!response.ok) {
-    throw new ApiError(data.error || 'Request failed', response.status);
+    throw new ApiError(
+      (data.error as string) || `Request failed (${response.status})`,
+      response.status,
+    );
   }
 
   return data as T;
