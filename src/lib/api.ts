@@ -1,4 +1,7 @@
-const API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:3001';
+// In development the Vite proxy routes /api/* → http://localhost:3001
+// so API_URL is an empty string (relative path).
+// In production set VITE_API_URL to the full backend origin, e.g. https://api.example.com
+const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
 export class ApiError extends Error {
   status: number;

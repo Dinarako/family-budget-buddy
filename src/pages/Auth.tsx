@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -83,10 +84,9 @@ export default function Auth() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="signin-password">Password</Label>
-                  <Input
+                  <PasswordInput
                     id="signin-password"
                     name="signin-password"
-                    type="password"
                     placeholder="••••••••"
                     required
                     disabled={isLoading}
@@ -124,10 +124,9 @@ export default function Auth() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="signup-password">Password</Label>
-                  <Input
+                  <PasswordInput
                     id="signup-password"
                     name="signup-password"
-                    type="password"
                     placeholder="••••••••"
                     required
                     minLength={8}
@@ -158,10 +157,9 @@ export default function Auth() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="reset-password">New Password</Label>
-                  <Input
+                  <PasswordInput
                     id="reset-password"
                     name="reset-password"
-                    type="password"
                     placeholder="••••••••"
                     required
                     minLength={8}
