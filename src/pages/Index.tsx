@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Home, ShoppingCart, Car, Heart, User, Music, LogOut, ArrowLeft } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { apiRequest } from "@/lib/api";
+import { Budget, ExpenseItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import BudgetHeader from "@/components/BudgetHeader";
 import IncomeSection from "@/components/IncomeSection";
@@ -12,19 +13,6 @@ import InsightsPanel from "@/components/InsightsPanel";
 import BudgetSelector from "@/components/BudgetSelector";
 import MembersDialog from "@/components/MembersDialog";
 import { useToast } from "@/hooks/use-toast";
-
-interface Budget {
-  id: string;
-  name: string;
-  monthly_income: number;
-}
-
-interface ExpenseItem {
-  id: string;
-  category: string;
-  name: string;
-  amount: number;
-}
 
 const Index = () => {
   const navigate = useNavigate();
@@ -36,56 +24,24 @@ const Index = () => {
   const [userRole, setUserRole] = useState<string>('viewer');
   const [loading, setLoading] = useState(true);
 
-  // Redirect to auth if not logged in
   useEffect(() => {
     if (!authLoading && !user) {
       navigate('/auth');
     }
   }, [user, authLoading, navigate]);
 
-  // Load budget and expenses when budget is selected
-  useEffect(() => {
-    if (selectedBudgetId) {
-      loadBudgetData();
-      setupRealtimeSubscription();
-    }
-  }, [selectedBudgetId]);
-
   const loadBudgetData = useCallback(async () => {
     if (!selectedBudgetId) return;
-
+    setLoading(true);
     try {
-      // Fetch budget
-      const { data: budgetData, error: budgetError } = await supabase
-        .from('budgets')
-        .select('*')
-        .eq('id', selectedBudgetId)
-        .single();
-
-      if (budgetError) throw budgetError;
-      setBudget(budgetData);
-
-      // Fetch user's role
-      const { data: memberData, error: memberError } = await supabase
-        .from('budget_members')
-        .select('role')
-        .eq('budget_id', selectedBudgetId)
-        .eq('user_id', user?.id)
-        .single();
-
-      if (memberError) throw memberError;
-      setUserRole(memberData.role);
-
-      // Fetch expenses
-      const { data: expensesData, error: expensesError } = await supabase
-        .from('expense_items')
-        .select('*')
-        .eq('budget_id', selectedBudgetId)
-        .order('created_at', { ascending: false });
-
-      if (expensesError) throw expensesError;
-      setExpenses(expensesData || []);
-    } catch (error: unknown) {
+      const [budgetRes, expensesRes] = await Promise.all([
+        apiRequest<{ budget: Budget; role: string }>(`/api/budgets/${selectedBudgetId}`),
+        apiRequest<{ expenses: ExpenseItem[] }>(`/api/budgets/${selectedBudgetId}/expenses`),
+      ]);
+      setBudget(budgetRes.budget);
+      setUserRole(budgetRes.role);
+      setExpenses(expensesRes.expenses);
+    } catch (error) {
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'An error occurred',
@@ -94,72 +50,23 @@ const Index = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedBudgetId, user?.id, toast]); // Add dependencies
+  }, [selectedBudgetId, toast]);
 
-  const setupRealtimeSubscription = useCallback(() => {
-    const channel = supabase
-      .channel('budget-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'budgets',
-          filter: `id=eq.${selectedBudgetId}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'UPDATE') {
-            setBudget(payload.new as Budget);
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'expense_items',
-          filter: `budget_id=eq.${selectedBudgetId}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            setExpenses(prev => [payload.new as ExpenseItem, ...prev]);
-          } else if (payload.eventType === 'UPDATE') {
-            setExpenses(prev => 
-              prev.map(exp => exp.id === payload.new.id ? payload.new as ExpenseItem : exp)
-            );
-          } else if (payload.eventType === 'DELETE') {
-            setExpenses(prev => prev.filter(exp => exp.id !== payload.old.id));
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [selectedBudgetId]); // Add dependencies
-
-  // Now include the functions in the dependency array
   useEffect(() => {
     if (selectedBudgetId) {
       loadBudgetData();
-      const cleanup = setupRealtimeSubscription();
-      return cleanup;
     }
-  }, [selectedBudgetId, loadBudgetData, setupRealtimeSubscription]);
+  }, [selectedBudgetId, loadBudgetData]);
 
   const handleIncomeChange = async (value: number) => {
     if (!selectedBudgetId || userRole === 'viewer') return;
-
     try {
-      const { error } = await supabase
-        .from('budgets')
-        .update({ monthly_income: value })
-        .eq('id', selectedBudgetId);
-
-      if (error) throw error;
-    } catch (error: unknown) {
+      const res = await apiRequest<{ budget: Budget }>(`/api/budgets/${selectedBudgetId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ monthly_income: value }),
+      });
+      setBudget(res.budget);
+    } catch (error) {
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'An error occurred',
@@ -177,20 +84,13 @@ const Index = () => {
       });
       return;
     }
-
     try {
-      const { error } = await supabase.from('expense_items').insert([
-        {
-          budget_id: selectedBudgetId,
-          category,
-          name: description,
-          amount,
-          created_by: user?.id,
-        },
-      ]);
-
-      if (error) throw error;
-    } catch (error: unknown) {
+      const res = await apiRequest<{ expense: ExpenseItem }>(`/api/budgets/${selectedBudgetId}/expenses`, {
+        method: 'POST',
+        body: JSON.stringify({ category, name: description, amount }),
+      });
+      setExpenses(prev => [res.expense, ...prev]);
+    } catch (error) {
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'An error occurred',
@@ -199,7 +99,7 @@ const Index = () => {
     }
   };
 
-  const handleRemoveExpense = (category: string) => async (id: string) => {
+  const handleRemoveExpense = (_: string) => async (id: string) => {
     if (userRole === 'viewer') {
       toast({
         title: 'Permission denied',
@@ -208,12 +108,10 @@ const Index = () => {
       });
       return;
     }
-
     try {
-      const { error } = await supabase.from('expense_items').delete().eq('id', id);
-
-      if (error) throw error;
-    } catch (error: unknown) {
+      await apiRequest(`/api/budgets/${selectedBudgetId}/expenses/${id}`, { method: 'DELETE' });
+      setExpenses(prev => prev.filter(exp => exp.id !== id));
+    } catch (error) {
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'An error occurred',
@@ -233,7 +131,6 @@ const Index = () => {
     setExpenses([]);
   };
 
-  // Show loading state
   if (authLoading || (selectedBudgetId && loading)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -242,7 +139,6 @@ const Index = () => {
     );
   }
 
-  // Show budget selector if no budget selected
   if (!selectedBudgetId) {
     return (
       <div>
@@ -257,29 +153,22 @@ const Index = () => {
     );
   }
 
-  // Get expenses by category
-  const getExpensesByCategory = (category: string): Expense[] => {
-    return expenses
-      .filter((exp) => exp.category === category)
-      .map((exp) => ({
-        id: exp.id,
-        description: exp.name,
-        amount: exp.amount,
-      }));
-  };
+  const getExpensesByCategory = (category: string): Expense[] =>
+    expenses
+      .filter(exp => exp.category === category)
+      .map(exp => ({ id: exp.id, description: exp.name, amount: exp.amount }));
 
   const categoryTotals = {
-    housing: expenses.filter((e) => e.category === 'housing').reduce((sum, e) => sum + e.amount, 0),
-    groceries: expenses.filter((e) => e.category === 'groceries').reduce((sum, e) => sum + e.amount, 0),
-    transportation: expenses.filter((e) => e.category === 'transportation').reduce((sum, e) => sum + e.amount, 0),
-    health: expenses.filter((e) => e.category === 'health').reduce((sum, e) => sum + e.amount, 0),
-    personal: expenses.filter((e) => e.category === 'personal').reduce((sum, e) => sum + e.amount, 0),
-    entertainment: expenses.filter((e) => e.category === 'entertainment').reduce((sum, e) => sum + e.amount, 0),
+    housing: expenses.filter(e => e.category === 'housing').reduce((s, e) => s + e.amount, 0),
+    groceries: expenses.filter(e => e.category === 'groceries').reduce((s, e) => s + e.amount, 0),
+    transportation: expenses.filter(e => e.category === 'transportation').reduce((s, e) => s + e.amount, 0),
+    health: expenses.filter(e => e.category === 'health').reduce((s, e) => s + e.amount, 0),
+    personal: expenses.filter(e => e.category === 'personal').reduce((s, e) => s + e.amount, 0),
+    entertainment: expenses.filter(e => e.category === 'entertainment').reduce((s, e) => s + e.amount, 0),
   };
 
-  const totalExpenses = Object.values(categoryTotals).reduce((sum, val) => sum + val, 0);
+  const totalExpenses = Object.values(categoryTotals).reduce((s, v) => s + v, 0);
   const remainingIncome = (budget?.monthly_income || 0) - totalExpenses;
-  const netLeftover = remainingIncome;
 
   return (
     <div className="min-h-screen bg-background">
@@ -309,21 +198,18 @@ const Index = () => {
       </div>
 
       <main className="container mx-auto max-w-6xl px-4 pb-8 space-y-8">
-        {/* Income Section */}
         <IncomeSection
           monthlyIncome={budget?.monthly_income || 0}
           remainingIncome={remainingIncome}
           onIncomeChange={handleIncomeChange}
         />
 
-        {/* Summary Panel */}
         <SummaryPanel
           totalIncome={budget?.monthly_income || 0}
           totalExpenses={totalExpenses}
-          netLeftover={netLeftover}
+          netLeftover={remainingIncome}
         />
 
-        {/* Expense Categories */}
         <div>
           <h2 className="text-2xl font-bold mb-6">Expense Categories</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -372,7 +258,6 @@ const Index = () => {
           </div>
         </div>
 
-        {/* Insights and Visualizations */}
         <div>
           <h2 className="text-2xl font-bold mb-6">Insights & Recommendations</h2>
           <InsightsPanel totalIncome={budget?.monthly_income || 0} categoryTotals={categoryTotals} />

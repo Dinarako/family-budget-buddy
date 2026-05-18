@@ -12,7 +12,6 @@ export default function Auth() {
   const { signIn, signUp, resetPassword, user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Redirect if already logged in
   if (user) {
     navigate('/');
     return null;
@@ -21,49 +20,36 @@ export default function Auth() {
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
-    
     const formData = new FormData(e.currentTarget);
     const email = formData.get('signin-email') as string;
     const password = formData.get('signin-password') as string;
-
     const { error } = await signIn(email, password);
-    
-    if (!error) {
-      navigate('/');
-    }
-    
+    if (!error) navigate('/');
     setIsLoading(false);
   };
 
   const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
-    
     const formData = new FormData(e.currentTarget);
     const email = formData.get('signup-email') as string;
     const password = formData.get('signup-password') as string;
     const displayName = formData.get('signup-name') as string;
-
     const { error } = await signUp(email, password, displayName);
-    
     if (!error) {
-      // Auto sign in after signup
       await signIn(email, password);
       navigate('/');
     }
-    
     setIsLoading(false);
   };
 
   const handleResetPassword = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
-    
     const formData = new FormData(e.currentTarget);
     const email = formData.get('reset-email') as string;
-
-    await resetPassword(email);
-    
+    const newPassword = formData.get('reset-password') as string;
+    await resetPassword(email, newPassword);
     setIsLoading(false);
   };
 
@@ -81,7 +67,7 @@ export default function Auth() {
               <TabsTrigger value="signup">Sign Up</TabsTrigger>
               <TabsTrigger value="reset">Reset Password</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="signin">
               <form onSubmit={handleSignIn} className="space-y-4">
                 <div className="space-y-2">
@@ -111,7 +97,7 @@ export default function Auth() {
                 </Button>
               </form>
             </TabsContent>
-            
+
             <TabsContent value="signup">
               <form onSubmit={handleSignUp} className="space-y-4">
                 <div className="space-y-2">
@@ -169,12 +155,24 @@ export default function Auth() {
                     required
                     disabled={isLoading}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reset-password">New Password</Label>
+                  <Input
+                    id="reset-password"
+                    name="reset-password"
+                    type="password"
+                    placeholder="••••••••"
+                    required
+                    minLength={8}
+                    disabled={isLoading}
+                  />
                   <p className="text-xs text-muted-foreground mt-1">
-                    We'll send you an email with a link to reset your password
+                    Enter your email and choose a new password to reset your account.
                   </p>
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? 'Sending...' : 'Send Reset Link'}
+                  {isLoading ? 'Resetting...' : 'Reset Password'}
                 </Button>
               </form>
             </TabsContent>

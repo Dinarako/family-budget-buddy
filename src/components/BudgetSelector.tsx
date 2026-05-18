@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { apiRequest } from '@/lib/api';
+import { BudgetWithRole } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,15 +10,6 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-interface Budget {
-  id: string;
-  name: string;
-  monthly_income: number;
-  created_at: string;
-  member_role: string;
-  member_count: number;
-}
-
 interface BudgetSelectorProps {
   onSelectBudget: (budgetId: string) => void;
 }
@@ -25,59 +17,23 @@ interface BudgetSelectorProps {
 export default function BudgetSelector({ onSelectBudget }: BudgetSelectorProps) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [budgets, setBudgets] = useState<BudgetWithRole[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [newBudgetName, setNewBudgetName] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      fetchBudgets();
-    }
+    if (user) fetchBudgets();
   }, [user]);
 
   const fetchBudgets = async () => {
     try {
-      const { data, error } = await supabase
-        .from('budgets')
-        .select(`
-          id,
-          name,
-          monthly_income,
-          created_at,
-          budget_members!inner (
-            role,
-            user_id
-          )
-        `)
-        .eq('budget_members.user_id', user?.id);
-
-      if (error) throw error;
-
-      // Transform data to include role and count
-      const budgetsWithDetails = await Promise.all(
-        (data || []).map(async (budget: any) => {
-          const { count } = await supabase
-            .from('budget_members')
-            .select('*', { count: 'exact', head: true })
-            .eq('budget_id', budget.id);
-
-          return {
-            id: budget.id,
-            name: budget.name,
-            monthly_income: budget.monthly_income,
-            created_at: budget.created_at,
-            member_role: budget.budget_members[0]?.role || 'viewer',
-            member_count: count || 0,
-          };
-        })
-      );
-
-      setBudgets(budgetsWithDetails);
-    } catch (error: any) {
+      const data = await apiRequest<{ budgets: BudgetWithRole[] }>('/api/budgets');
+      setBudgets(data.budgets);
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to load budgets',
         variant: 'destructive',
       });
     } finally {
@@ -87,34 +43,19 @@ export default function BudgetSelector({ onSelectBudget }: BudgetSelectorProps) 
 
   const createBudget = async () => {
     if (!newBudgetName.trim()) return;
-
     try {
-      const { data, error } = await supabase
-        .from('budgets')
-        .insert([
-          {
-            name: newBudgetName,
-            monthly_income: 0,
-            created_by: user?.id,
-          },
-        ])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      toast({
-        title: 'Success',
-        description: 'Budget created successfully!',
+      await apiRequest('/api/budgets', {
+        method: 'POST',
+        body: JSON.stringify({ name: newBudgetName }),
       });
-
+      toast({ title: 'Success', description: 'Budget created successfully!' });
       setNewBudgetName('');
       setIsCreating(false);
       fetchBudgets();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to create budget',
         variant: 'destructive',
       });
     }
@@ -155,7 +96,8 @@ export default function BudgetSelector({ onSelectBudget }: BudgetSelectorProps) 
                     id="budget-name"
                     placeholder="Family Budget 2024"
                     value={newBudgetName}
-                    onChange={(e) => setNewBudgetName(e.target.value)}
+                    onChange={e => setNewBudgetName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && createBudget()}
                   />
                 </div>
                 <div className="flex gap-2">
@@ -170,7 +112,7 @@ export default function BudgetSelector({ onSelectBudget }: BudgetSelectorProps) 
         )}
 
         <div className="grid gap-4 md:grid-cols-2">
-          {budgets.map((budget) => (
+          {budgets.map(budget => (
             <Card
               key={budget.id}
               className="cursor-pointer hover:shadow-lg transition-shadow"

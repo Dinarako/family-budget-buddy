@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { apiRequest } from '@/lib/api';
+import { BudgetMember, AppRole } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 import {
   Dialog,
@@ -17,13 +18,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Users, Plus, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-interface Member {
-  id: string;
-  user_id: string;
-  role: 'admin' | 'editor' | 'viewer';
-  display_name: string | null;
-}
-
 interface MembersDialogProps {
   budgetId: string;
   userRole: string;
@@ -32,48 +26,26 @@ interface MembersDialogProps {
 export default function MembersDialog({ budgetId, userRole }: MembersDialogProps) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [members, setMembers] = useState<Member[]>([]);
+  const [members, setMembers] = useState<BudgetMember[]>([]);
   const [newMemberEmail, setNewMemberEmail] = useState('');
-  const [newMemberRole, setNewMemberRole] = useState<'admin' | 'editor' | 'viewer'>('viewer');
+  const [newMemberRole, setNewMemberRole] = useState<AppRole>('viewer');
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      fetchMembers();
-    }
+    if (open) fetchMembers();
   }, [open, budgetId]);
 
   const fetchMembers = async () => {
     try {
-      const { data: membersData, error } = await supabase
-        .from('budget_members')
-        .select('id, user_id, role')
-        .eq('budget_id', budgetId);
-
-      if (error) throw error;
-
-      // Fetch profile data separately
-      const enrichedMembers = await Promise.all(
-        (membersData || []).map(async (member) => {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('display_name')
-            .eq('id', member.user_id)
-            .single();
-
-          return {
-            ...member,
-            display_name: profile?.display_name || null,
-          };
-        })
+      const data = await apiRequest<{ members: BudgetMember[] }>(
+        `/api/budgets/${budgetId}/members`
       );
-
-      setMembers(enrichedMembers);
-    } catch (error: any) {
+      setMembers(data.members);
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to load members',
         variant: 'destructive',
       });
     }
@@ -81,48 +53,19 @@ export default function MembersDialog({ budgetId, userRole }: MembersDialogProps
 
   const addMember = async () => {
     if (!newMemberEmail.trim()) return;
-    
     setLoading(true);
     try {
-      // First, find user by email
-      const { data: userData, error: userError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', newMemberEmail) // This won't work as expected
-        .single();
-
-      // Note: In production, you'd need an edge function to look up users by email
-      // For now, users need to enter the user ID
-      
-      toast({
-        title: 'Note',
-        description: 'User lookup by email requires an edge function. Please enter the user ID instead.',
-        variant: 'destructive',
+      await apiRequest(`/api/budgets/${budgetId}/members`, {
+        method: 'POST',
+        body: JSON.stringify({ email: newMemberEmail.trim(), role: newMemberRole }),
       });
-
-      const { error } = await supabase
-        .from('budget_members')
-        .insert([
-          {
-            budget_id: budgetId,
-            user_id: newMemberEmail, // Treating as user ID for now
-            role: newMemberRole,
-          },
-        ]);
-
-      if (error) throw error;
-
-      toast({
-        title: 'Success',
-        description: 'Member added successfully!',
-      });
-
+      toast({ title: 'Success', description: 'Member added successfully!' });
       setNewMemberEmail('');
       fetchMembers();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to add member',
         variant: 'destructive',
       });
     } finally {
@@ -130,25 +73,18 @@ export default function MembersDialog({ budgetId, userRole }: MembersDialogProps
     }
   };
 
-  const updateRole = async (memberId: string, newRole: 'admin' | 'editor' | 'viewer') => {
+  const updateRole = async (memberId: string, newRole: AppRole) => {
     try {
-      const { error } = await supabase
-        .from('budget_members')
-        .update({ role: newRole })
-        .eq('id', memberId);
-
-      if (error) throw error;
-
-      toast({
-        title: 'Success',
-        description: 'Role updated successfully!',
+      await apiRequest(`/api/budgets/${budgetId}/members/${memberId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ role: newRole }),
       });
-
+      toast({ title: 'Success', description: 'Role updated successfully!' });
       fetchMembers();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to update role',
         variant: 'destructive',
       });
     }
@@ -156,32 +92,17 @@ export default function MembersDialog({ budgetId, userRole }: MembersDialogProps
 
   const removeMember = async (memberId: string, memberUserId: string) => {
     if (memberUserId === user?.id) {
-      toast({
-        title: 'Error',
-        description: 'You cannot remove yourself',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'You cannot remove yourself', variant: 'destructive' });
       return;
     }
-
     try {
-      const { error } = await supabase
-        .from('budget_members')
-        .delete()
-        .eq('id', memberId);
-
-      if (error) throw error;
-
-      toast({
-        title: 'Success',
-        description: 'Member removed successfully!',
-      });
-
+      await apiRequest(`/api/budgets/${budgetId}/members/${memberId}`, { method: 'DELETE' });
+      toast({ title: 'Success', description: 'Member removed successfully!' });
       fetchMembers();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to remove member',
         variant: 'destructive',
       });
     }
@@ -210,14 +131,19 @@ export default function MembersDialog({ budgetId, userRole }: MembersDialogProps
         <div className="space-y-4">
           {canManageMembers && (
             <div className="space-y-3 p-4 border rounded-lg">
-              <Label>Add Member (User ID)</Label>
+              <Label>Add Member by Email</Label>
               <Input
-                placeholder="Enter user ID"
+                placeholder="member@example.com"
+                type="email"
                 value={newMemberEmail}
-                onChange={(e) => setNewMemberEmail(e.target.value)}
+                onChange={e => setNewMemberEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addMember()}
               />
               <div className="flex gap-2">
-                <Select value={newMemberRole} onValueChange={(value) => setNewMemberRole(value as 'admin' | 'editor' | 'viewer')}>
+                <Select
+                  value={newMemberRole}
+                  onValueChange={value => setNewMemberRole(value as AppRole)}
+                >
                   <SelectTrigger className="w-32">
                     <SelectValue />
                   </SelectTrigger>
@@ -232,32 +158,36 @@ export default function MembersDialog({ budgetId, userRole }: MembersDialogProps
                   Add
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                The person must already have an account to be added.
+              </p>
             </div>
           )}
 
           <div className="space-y-2">
             <Label>Current Members</Label>
-            {members.map((member) => (
+            {members.map(member => (
               <div
                 key={member.id}
                 className="flex items-center justify-between p-3 border rounded-lg"
               >
-                <div className="flex-1">
-                  <p className="font-medium">
-                    {member.display_name || 'Unknown User'}
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">
+                    {member.display_name || member.email}
                   </p>
+                  <p className="text-xs text-muted-foreground truncate">{member.email}</p>
                   {member.user_id === user?.id && (
                     <Badge variant="outline" className="text-xs mt-1">
                       You
                     </Badge>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 ml-2 shrink-0">
                   {canManageMembers && member.user_id !== user?.id ? (
                     <>
                       <Select
                         value={member.role}
-                        onValueChange={(value) => updateRole(member.id, value as 'admin' | 'editor' | 'viewer')}
+                        onValueChange={value => updateRole(member.id, value as AppRole)}
                       >
                         <SelectTrigger className="w-24">
                           <SelectValue />
